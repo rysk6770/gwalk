@@ -1,0 +1,9 @@
+
+N = 6$
+B = cyclic(N)$
+Vars = vars(B)$
+
+Order_s = create_order_mat(N, 0)$
+Order_t = create_order_mat(N, 2)$
+
+end$
