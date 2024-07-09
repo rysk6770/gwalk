@@ -1,0 +1,320 @@
+def cat(L) {
+    while ( L != [] ) {
+        print(car(L),0);
+        L = cdr(L);
+    }
+    print(""); 
+}
+
+def chkPoly(Poly, Vars){
+    if (9 != type(Poly)){
+        if(2 == type(Poly)){
+            Poly = dp_ptod(Poly, Vars); // 
+        }
+        else{
+            cat([Poly," is not a Polynomial"]);
+        }
+    }
+    return Poly;
+}
+
+def new_order(Vec, Mat){
+    New = [vtol(Vec)];
+    N = size(Mat)[0];
+    for(I = 0; I<N; I++){
+        New = cons(vtol(Mat[I]), New);
+    }
+    return newmat(length(New),length(New[0]),reverse(New));
+}
+
+/* compare V1 and V2  return 1 when V1 > V2, return -1 when V1 < V2, return 0 when V1 == V2*/
+def compare(V1, V2, M){
+    if(length(V1) != length(V2)){
+        cat(["compare : size mismatch. len(V1) = ", length(V1), " len(V2) = ", length(V2)])$
+        return 0;
+    }
+    if(5 == type(M)){
+        V = innerProd(M, V1-V2);
+        if(V != 0){
+            return V/dabs(V);
+        }
+    }
+    if(6 == type(M)){
+        N = size(M)[0];
+        V = M*(V1 - V2);
+        for(I = 0; I < N; I++){
+            if(V[I] != 0){
+                return V[I]/dabs(V[I]);
+            }
+        }
+    }
+    return 0;
+}
+
+def innerProd(V1, V2){
+    N = length(V1);
+    if(N != length(V2)) return 0;
+    Sum = 0;
+    for(I = 0; I < N; I++){
+            Sum += V1[I]*V2[I];
+    }
+    return Sum;
+}
+
+/* return degree vectors of monominals of Poly */
+def supp(Poly, Vars){
+    Poly = map(chkPoly, Poly, Vars);
+    Supp = [];
+    N = length(Vars);
+    while(Poly){
+        Supp = cons(dp_etov(Poly), Supp);
+        Poly = dp_rest(Poly);
+    }
+    return reverse(Supp);
+}
+
+def boundary(Poly, Order, Vars){
+    Poly = supp(Poly, Vars);
+    N = length(Poly);
+    Max = ltov([Poly[0],0]);
+    for(I=1; I<N; I++){
+        Deg = Poly[I];
+        if(1 == compare(Deg, Max[0],  Order)){
+            Max[0] = Deg;
+            Max[1] = I;
+        }
+    }
+    Degs = [];
+    for(I=0; I<N; I++){
+        if(I != Max[1]){
+            Degs = cons(Max[0]-Poly[I], Degs);
+        }
+    }
+    return reverse(Degs);
+}
+
+def clean(V){
+    V = qsort(V);
+    N = length(V[0]);
+    Result = [V[0]];
+    Check = V[0];
+    while(V != []){
+        while(V!=[]){
+            if(V[0] == Check){
+                V = cdr(V);
+            }       
+            else{
+                break;
+            }
+        }
+        if(V == []) break;
+        for(J = 0; J < N; J++){
+            if(V[0][J] != 0){
+                C = V[0][J];
+                break;
+            }
+        }
+        for( I = 0; I < length(Result); I++){
+            if(C*Result[I] == Result[I][J]*V[0]){
+                break;
+            }
+        }
+        if(I < length(Result)){
+             if(C > Result[I][J]){
+                Result = cdr(Result);
+                Result = cons(V[0], Result);
+            }
+        }
+        else{
+            Result = cons(V[0], Result);
+        }
+        Check = V[0];
+    }
+    return Result;
+}
+
+def wdeg(Poly, Omega){
+    Deg = 0;
+    N = length(Omega);
+    while(Poly){
+        Sum = 0;
+        Term = dp_etov(Poly);
+        Poly = dp_rest(Poly);
+        Sum = innerProd(Term ,Omega);
+        Deg = Sum > Deg? Sum:Deg;
+    }
+    return Deg;
+}
+
+def iniPoly(Poly, Omega){
+    IniPoly = 0;
+    Deg = wdeg(Poly, Omega);
+    
+    while(Poly){
+        HT = dp_hm(Poly);
+        if(Deg == wdeg(HT, Omega)){
+            IniPoly += HT;
+        }
+        Poly = dp_rest(Poly);
+    }
+
+    return IniPoly;
+}
+
+def make_quotient(P, G){
+    N = length(G);
+    O = [];
+    for(I = 0; I < N; I++){
+        O = cons(0, O);
+    }
+    O = ltov(O);
+    Flag = 0;
+    while(P){
+        for(I = 0; I < N; I++){
+            if(dp_redble(P, G[I])){
+                Q = (dp_hc(P)/dp_hc(G[I]))*dp_subd(P, G[I]);
+                O[I] += Q;
+                P = P - Q*G[I];
+                if(P == 0) break;
+            }
+        }
+    }
+    
+    return vtol(O);
+}
+
+def spoly(F, G){
+    HmF = dp_hm(F);
+    HmG = dp_hm(G);
+    Lcm = dp_lcm(HmF, HmG);
+    HmF = dp_subd(Lcm, HmF)/dp_hc(F);
+    HmG = dp_subd(Lcm, HmG)/dp_hc(G);
+    S = HmF*F - HmG*G;
+    return ltov([HmF, HmG, S]);
+}
+
+def lifting(In, InG , G, Vars, Order){
+    N = length(In);
+    Order_new = dp_ord();
+    dp_ord(Order);
+    In = map(dp_sort, In);
+    InG = map(dp_sort, InG);
+    O = map(make_quotient, InG, In);
+    LenO = length(O);
+    H = newvect(LenO);
+    
+    for(I = 0; I < LenO; I++){
+        for(J = 0; J < N; J++){
+            H[I] += O[I][J]*G[J];
+        }
+    }
+    
+    dp_ord(Order_new);
+    map(dp_sort, H);
+    
+    return H;
+}
+
+
+def nextcone(G, W, W_t, Vars){
+    B = [];
+    N = length(G);
+    for(I = 0; I < N; I++){
+        B = append(boundary(G[I], W,Vars), B);
+    }
+    B = clean(B);
+    N = length(B);
+    U_last = 1;
+    U_j = 1;
+    for(I = 0; I < N; I ++){
+        WtB = innerProd(W_t, B[I]);
+        if(WtB < 0){
+            WB = innerProd(W, B[I]);
+            U_j = WB/(WB - WtB);
+        }
+        if(U_j < U_last){
+            U_last = U_j;
+        }
+    }
+    return U_last;
+}
+
+def conv2int(V){
+    if(4 == type(V)){
+        V = ltov(V);
+    }
+    if(5 != type(V)){
+        return 0;
+    }
+    N = length(V);
+    LCM = 1;
+    I = 0;
+    while(1 == dn(V[I])){
+        I++;
+        if(I == N) return V;
+    }
+    for(; I < N; I++){
+        if(dn(V[I]) != 1){
+            LCM = ilcm(LCM, dn(V[I]));
+        }
+    }
+
+    return LCM*V;
+}
+
+def gwalk(G, Order_s, Order_t, Vars){
+    N = length(Vars);
+    Vars = vtol(Vars);
+    dp_ord(Order_s);
+    G = map(chkPoly, G,Vars);
+    
+    M_old = Order_s;
+    G_old = G;
+    W_new = Order_s[0]; //pert
+    print(W_new);
+    W_t = Order_t[0]; //pert
+    M_new = new_order(W_new, Order_t);
+    Flag = 1;
+    Step = 1;
+    while(Flag){
+        cat(["Step : ", Step]);
+        In = map(iniPoly,G_old, W_new);
+        InG = map(chkPoly, nd_gr(vtol(In),Vars, 0, M_new),Vars);
+        G_new = lifting(In, InG, G_old, Vars, M_old);
+        G_new = map(dp_dtop, G_new, Vars);
+        G_new = nd_gr_postproc(vtol(G_new), Vars, 0, M_new, 0);
+        G_new = map(dp_ptod, G_new, Vars);
+// cat(["G_new : ", G_new]);
+        U = nextcone(G_new, W_new, W_t, Vars);
+
+        cat(["U : ", U]);
+        if(W_new == W_t){
+            Flag = 0;
+        }else{
+            M_old = M_new;
+            G_old = G_new;
+            W_new = (1-U)*W_new + U*W_t;
+            W_new = conv2int(W_new);
+        cat(["W_new : ", W_new]);
+            M_new = new_order(W_new, Order_t);
+            dp_ord(M_new);
+            G_old = map(dp_sort, G_old);
+        }
+        
+        Step++;
+    }
+    
+    print("End");
+    return G_new;
+    
+}
+
+
+
+// nd_gr(B,V,P,O| dp=1) : return GB
+load("preset.txt");
+G_s = nd_gr(B, Vars, 0, 0 | dp = 1)$     
+G_t = nd_gr(B, Vars, 0, 2 | dp = 1)$
+
+S_np= gwalk(G_s, Order_s, Order_t, Vars);
+end$
