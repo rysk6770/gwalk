@@ -1,40 +1,75 @@
 load("rysk.c")$
 load("noro_gw.rr")$
 
-def vec_to_mat(V){
-    N = length(V);
-    Mat = newmat(N, 1);
-    for(I = 0; I<N; I++){
-        Mat[I][0] = V[I];
+/*
+    make set list of L.
+    same with remove duplicate of L and sort.
+*/
+def set_of(L){
+    if(5 == type(L)) L = vtol(L);
+    if([] == L) error("set_of : L is empty");
+    L = qsort(L);
+    Result = [L[0]];
+    L = cdr(L);
+    while(L != []){
+        if(L[0] != Result[0]) Result = cons(L[0], Result);
+        L = cdr(L);
     }
-    return Mat;
+    return reverse(Result);
 }
-
-def mat_transpose(Mat){
-    [N, M] = size(Mat);
-    NewMat = newmat(M,N);
-    for(I=0; I<N; I++){
-        for(J=0; J<M; J++){
-            NewMat[J][I] = Mat[I][J];
-        }
-    }
-    return NewMat;
-}
-
 
 /*
-    make new order defined as [Vector, [Matrix]]
+    make list of degree vectors of F
 */
-def new_order(Vector, Matrix){
-    List = [vtol(Vector)];
-    N = size(Matrix)[0];
-    for(I = 0; I < N; I++){
-        List = cons(vtol(Matrix[I]), List);
+def supp(F){
+    V = [];
+    for(; F; F = dp_rest(F)){
+        V = cons(dp_etov(F), V);
     }
-    List = reverse(List);
-    Result = newmat(length(List), length(Vector), List);
+    return reverse(V);
+}
 
-    return Result;
+/*
+    U is maximum vector respect to order of supp(F)
+    return list of del_<F := {U - U'| U' \in supp(F)-{U}}
+*/
+def round_poly(F, U){
+    D = [];
+    F = supp(F);
+    for(; F != []; F = cdr(F)){
+        T = car(F);
+        if(T != U){
+            D = cons(U - T, D);
+        }
+    }
+    return D;
+}
+
+/*
+    G is list of polynomials
+    GM is list of makred term of G
+    return union of round_poly for each(G[I],GM[I])
+*/
+def round_set(G, GM){
+    D = [];
+    for(; G!=[]; G = cdr(G), GM = cdr(GM)){
+        D = append(D, round_poly(car(G), dp_etov(car(GM))));
+    }
+    D = set_of(D);
+    return D;
+}
+
+def innerProduct(V1, V2){
+    if ( V1 == 0 || V2 == 0 ) return 0;
+    N = length(V1);
+    if(N != length(V2)){
+        error("V1 and V2 have different lengths");
+    }
+    Sum = 0;
+    for(I = 0; I < N; I++){
+        Sum += V1[I]*V2[I];
+    }
+    return Sum;
 }
 
 /*
@@ -45,110 +80,101 @@ def new_order(Vector, Matrix){
 */
 def compare(V1, V2, M){
     // when M is vector.
-    if(5 == type(M)) V = innerProduct(M, V1-V2);
+    if(5 == type(M)){
+        T1 = innerProduct(V1, M);
+        T2 = innerProduct(V2, M);
+        if(T1 < T2) return 1;
+        else if(T1 > T2) return -1;
+        else return 0;
+    }
     // when M is matrix.
     if(6 == type(M)){
         N = size(M)[0];
-        V = M*(V1 - V2);
         for(I = 0; I < N; I++){
-            if(V[I] != 0){
-                V = V[I];
-                break;
-            }
+            T1 = innerProduct(V1, M[I]);
+            T2 = innerProduct(V2, M[I]);
+            if(T1 < T2) return 1;
+            else if(T1 > T2) return -1;
         }
+        return 0;
     }
-    if(V > 0) return -1;
-    else if(V < 0) return 1;
-    else return 0;
-}
-/*
-    return degree vectors of polynomial F
-*/
-def supp(Poly){
-    Result = [];
-    while(Poly){
-        Result = cons(dp_etov(Poly), Result);
-        Poly = dp_rest(Poly);
-    }
-    return reverse(Result);
-}
-/*
-    if V is in C12 return 1
-    else return 0
-*/
-def in_C12(V, Order1, Order2){
-    T1 = compare(0, V, Order1);
-    T2 = compare(0, V, Order2);
-    if((T1 == 1) && (T2 == -1)) return 1;
-    else return 0;
 }
 
 /*
-    for facet preorder < defined by matrice M1 and M2 = O(T)
-    if u < v return 1
+    U, V is vector
+    M1, M2 if matrix
+    return 1 when U < V as facet preorder defined as M1, M2
     else return 0
 */
 def facet_preorder(U, V, M1, M2){
-    if ( U == 0 || V == 1) return 1;
-	if ( U == 1 || V == 0) return 0;
+    if ( U == 0 ) return 1;
+	if ( U == 1 ) return 0;
 	N = size(V)[0];
-    
 	for ( I = 0; I < N; I++ ) {
 		Left = innerProduct(M2[I],U)*V;
 		Right = innerProduct(M2[I],V)*U;
 		R = compare(Left,Right,M1);
-		if ( R < 0 ) return 1;
-		else if ( R > 0 ) return 0;
+		if ( R > 0 ) return 1;
+		else if ( R < 0 ) return 0;
 	}
 	return 1;
 }
-
-def compute_last_w(G, W, Order1, Order2){
-    DG = []; N = length(G);
-    //if(W == 0) W=newvect(size(Order1)[0]);
-    for(I = 0; I < N; I++){
-        DG = append(compute_df(G[I]), DG);
-    }
-    DG = set_of(DG); V = []; N = length(DG);
-    for(I = 0; I < N; I++){
-        if( in_C12(DG[I], Order1, Order2) && facet_preorder(W, DG[I], Order1, Order2)){
-            V = cons(DG[I], V);
-        }
-    }
-    
-    if(V == []) return 1;
-    for(T = V; T!=[]; T=cdr(T)){
-        S = car(T);
-        for(U = V; U!=[]; U=cdr(U)){
-            if(!facet_preorder(S, car(U), Order1, Order2)){
-                break;
-            }
-        }
-        if(U == []){
-            return S;
-        }
-    }
-    print("c");
-    error("compute_last_w");
+/*
+    check V is in Cone_<1,<2
+    M1 = O(<1), M2 = O(<2)
+*/
+def in_C12(V, M1, M2){
+    T1 = compare(0, V, M1);
+    T2 = compare(0, V, M2);
+    if( T1 == 1 && T2 == -1) return 1;
+    else return 0;
 }
+
+/*
+    G is list of polynomials
+    GM is marked terms of G
+    W is previous W
+    M1, M2 is matrix s.t. define order
+*/
+def compute_last_w(G, GM, W, M1, M2){
+    R = round_set(G, GM);
+    V = [];
+    for(; R != []; R = cdr(R)){
+        if(in_C12(car(R), M1, M2) && facet_preorder(W, car(R), M1, M2)) V = cons(car(R), V);
+    }
+    if(V == []) return 1;
+
+    Min = car(V);
+    V = cdr(V);
+    for(; V!=[]; V=cdr(V)){
+        if(facet_preorder(car(V), Min, M1, M2)){
+            Min = car(V);
+        }
+    }
+    return Min;
+}
+
+
+
+
+
+
 
 /*
     GM is marked term of G
     M1 and M2 define facet preorder
 */
-def initial_W(G, W, M1, M2){
-    GM = dp_hm(G);
-    G = dp_rest(G);
-    U = dp_etov(GM);
-    S = [];
-    for(; G; G = dp_rest(G)){
-        V = dp_etov(G);
+def initial_W(P, Pmark, W, M1, M2){
+    P -= Pmark;
+    U = dp_etov(Pmark);
+    for(; P; P = dp_rest(P)){
+        V = dp_etov(P);
         T = U - V;
         if( facet_preorder(T, W, M1, M2) && facet_preorder(W, T, M1, M2)){
-            GM += dp_hm(G);
+            Pmark += dp_hm(P);
         }
     }
-    return GM;
+    return Pmark;
 }
 
 def reducing_mark(P, G, GM){
@@ -158,114 +184,106 @@ def reducing_mark(P, G, GM){
             for(J = 0; J < M; J++){
                 if((dp_redble(dp_hm(T), GM[J]))){
                     P -= (dp_hc(T)/dp_hc(GM[J]))*dp_subd(T, GM[J])*G[J];
+                    
                     break;
                 }
             }
             if(J != M) break;
         }
+        
         if(!T) return P;
     }
     return P;
 }
 
+def removeKth(L, K){
+    R = [];
+    N = length(L);
+    for(I=0;I<N;I++){
+        if(I!=K){
+            R = cons(L[I], R);
+        }
+    }
+    return reverse(R);
+}
+
 def interreduce_mark(G, GM){
-    
-    G = vtol(G);
     N = length(G);
-    Result = [];
-    GM_L = [];
+    G = vtol(G);
+    GM = vtol(GM);
+    Result = ResultM = [];
     for(I = 0; I < N; I++){
-        P = car(G); PM = car(GM);
-        G = cdr(G); GM = cdr(GM);
-        Q = reducing_mark(P, append(Result, G),append(GM_L, GM));
-        Result = cons(Q, Result);   
-        GM_L = cons(PM, GM_L);     
+        P = G[I];
+        Q = reducing_mark(P, removeKth(G, I), removeKth(GM, I));
+        if(Q){
+            Result = cons(Q, Result);
+            ResultM = cons(GM[I], ResultM);
+        }
+        
+    }
+    return [Result, ResultM];
+}
+
+def lifting_mark(H, G, GM){
+    N = length(H);
+    Result = newvect(N);
+    for(I=0; I<N; I++){
+        Result[I] = H[I] - reducing_mark(H[I], G, GM);
     }
     return Result;
 }
 
-
-def generic_walk(G, StartOrder, TargetOrder, Vars){
+def generic_walk_r(G, StartOrder, TargetOrder, Vars){
     dp_ord(StartOrder); 
     G = map(chkPoly, G, Vars); 
     G = map(dp_sort, G);
-    G_mark = map(dp_hm, G); //Marking initial as Order1
-   // GM = map(dp_hm, G);
-    dp_ord(TargetOrder);
+    GM = map(dp_hm, G); //Marking initial as Order1
+
     T1 = T0 = Tw = Step = 0;
     while(1){
-    print("step : ",0); print(++Step);
-        W = compute_last_w(G, W, StartOrder, TargetOrder);
-    print(["W : ", W]);
+        L = dp_compute_last_w(map(dp_ptozp,G), GM,W, StartOrder, TargetOrder);
+        W = compute_last_w(G,GM, W, StartOrder, TargetOrder);
+print("W:", 0); print(W); //print(L[0]);
         if(1 == W) break;
-    
+print("step ",0); print(++Step);
+        dp_ord(TargetOrder);
+        G = map(dp_sort,G); 
+print("Ini:", 0);
         N = length(G);
         IniG = newvect(N);
         for(I=0; I<N; I++){
-            IniG[I] = initial_W(G[I], W, StartOrder, TargetOrder);
+            IniG[I] = initial_W(G[I], GM[I], W, StartOrder, TargetOrder);
         }
-    //print(IniG);
-    //print(N);
-        H = map(chkPoly, nd_gr(vtol(IniG), Vars, 0, TargetOrder), Vars);
-        H_mark = map(dp_hm, H);
-    //print(H); //Marking initial term as Order2
-        //G = map(dp_sort, G);
-        H_r = map(reducing_mark, H, G, G_mark);
-        H_d = [];
-        N = length(H);
-        for(I = 0; I<N; I++){
-            F = H[I] - H_r[I];
-            //print(["I", I, H[I] == H_r[I] ]);
-            //print(F);
-            if(F == 0){
-                H_d = cons(H[I], H_d);
-            }else{
-                H_d = cons(F, H_d);
-            }
-        }
-        //print(H_d);
-        H_d = reverse(H_d);
-        //H_d = 
-        //print(H_d);
-    print(N);
-        dp_ord(TargetOrder);
-        H_d = map(dp_sort, H_d);
-        G = interreduce_mark(H_d,H_mark);
-        G_mark = H_mark;
-        //print(G);
-        G = map(dp_sort, G);
+print("done");
+    
+print("nd_gr:", 0);
+        H = nd_gr(vtol(IniG), Vars, 0, TargetOrder|dp=1);
+print("done");
+        H = map(dp_ptozp, H);
+        Hmark = map(dp_hm, H);
+print("lifting:", 0);
+        Hd = lifting_mark(H, G, GM);
+print("done");
+
+print("reducing:", 0);
+    L = interreduce_mark(Hd,Hmark);
+    G = L[0];
+    GM = L[1];
+print("done");
     }
-    print("genwalk : Complete");
+
+print("genwalk : Complete");
     return G;
 }
 
+print("genwalk loaded")$ 
 
+S = generic_walk_r(G_s, Order_s, Order_t, Vars)$
 
-
-N = 5$
-Cyclic = 1$
-if(Cyclic) B = cyclic(N)$
-else B = katsura(N)$
-Vars = vars(B)$
-N = length(Vars)$
-Order_s = create_order_mat(N, 0)$
-Order_t = create_order_mat(N, 2)$
-
-if(1){
-    G_s = nd_gr(B, Vars, 0, 0 | dp = 1)$
-    G_t = noro_gw.generic_walk(map(dp_dtop,G_s, Vars), Vars, Order_s, Order_t)$
-}else{
-    G_s = dp_f4_main(B, Vars, Order_s)$
-    G_t = noro_gw.generic_walk(G_s, Vars, Order_s, Order_t)$
-}
-
-
-print("start genwalk")$ cputime(1)$
-//S= generic_walk(G_s, Order_s, Order_t, Vars)$
-cputime(0)$
 G_tp = qsort(G_t)$//map(dp_dtop, G_t, Vars)$
 S_p = map(dp_dtop, S, Vars)$
 S_p = map(ptozp, S_p)$
 S_p = qsort(S_p)$
 cat(["S == G_t? ", gb_comp(G_tp, S_p)? "True":"False"])$
+
 end$
